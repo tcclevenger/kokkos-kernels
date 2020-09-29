@@ -95,7 +95,7 @@ void kk_sparseMatrix_generate(
   colInd = new OrdinalType[nnz];
   for(OrdinalType row=0;row<nrows;row++)
   {
-    for(SizeType k=rowPtr[row]; k<rowPtr[row+1]; ++k)
+    for(SizeType k=rowPtr[row] ;k<rowPtr[row+1];k++)
     {
       while (true){
         OrdinalType pos = (1.0*rand()/RAND_MAX-0.5)*bandwidth+row;
@@ -169,8 +169,7 @@ void kk_diagonally_dominant_sparseMatrix_generate(
     OrdinalType bandwidth,
     ScalarType* &values,
     SizeType* &rowPtr,
-    OrdinalType* &colInd,
-    ScalarType diagDominance = 10 * Kokkos::ArithTraits<ScalarType>::one())
+    OrdinalType* &colInd)
 {
   rowPtr = new SizeType[nrows+1];
 
@@ -187,6 +186,7 @@ void kk_diagonally_dominant_sparseMatrix_generate(
   nnz = rowPtr[nrows];
   values = new ScalarType[nnz];
   colInd = new OrdinalType[nnz];
+  const ScalarType temp = 10;
   for(OrdinalType row=0; row<nrows; row++)
   {
     ScalarType total_values = 0;
@@ -222,7 +222,7 @@ void kk_diagonally_dominant_sparseMatrix_generate(
     }
 
     colInd[rowPtr[row+1] - 1]= row;
-    values[rowPtr[row+1] - 1] = total_values * diagDominance;
+    values[rowPtr[row+1] - 1] = total_values * temp;
   }
 }
 
@@ -232,10 +232,8 @@ crsMat_t kk_generate_diagonally_dominant_sparse_matrix(
     typename crsMat_t::const_ordinal_type ncols,
     typename crsMat_t::non_const_size_type &nnz,
     typename crsMat_t::const_ordinal_type row_size_variance,
-    typename crsMat_t::const_ordinal_type bandwidth,
-    typename crsMat_t::const_value_type diagDominance =
-      10 * Kokkos::ArithTraits<typename crsMat_t::value_type>::one())
-{
+    typename crsMat_t::const_ordinal_type bandwidth){
+
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename graph_t::row_map_type::non_const_type row_map_view_t;
   typedef typename graph_t::entries_type::non_const_type   cols_view_t;
@@ -251,7 +249,7 @@ crsMat_t kk_generate_diagonally_dominant_sparse_matrix(
 
   kk_diagonally_dominant_sparseMatrix_generate<scalar_t, lno_t, size_type>(
       nrows, ncols, nnz, row_size_variance,  bandwidth,
-      values, xadj, adj, diagDominance);
+      values, xadj, adj);
 
   row_map_view_t rowmap_view("rowmap_view", nrows+1);
   cols_view_t columns_view("colsmap_view", nnz);
@@ -280,6 +278,7 @@ crsMat_t kk_generate_diagonally_dominant_sparse_matrix(
   delete [] xadj; delete [] adj; delete [] values;
   return crsmat;
 }
+
 
 template <typename crsMat_t>
 crsMat_t kk_generate_triangular_sparse_matrix(
@@ -1025,7 +1024,7 @@ void write_kokkos_crst_matrix(crs_matrix_t a_crsmat,const  char *filename){
 template <typename lno_t, typename size_type, typename scalar_t>
 int read_mtx (
     const char *fileName,
-    lno_t *nv, size_type *ne,
+    lno_t *numRows, lno_t *numCols, size_type *numEntries,
     size_type **xadj, lno_t **adj, scalar_t **ew,
     bool symmetrize = false, bool remove_diagonal = true,
     bool transpose = false)
@@ -1216,8 +1215,6 @@ int read_mtx (
     nc = tmp;
   }
   //idx *nv, idx *ne, idx **xadj, idx **adj, wt **wt
-  *nv = nr;
-  *ne = nE;
   //*xadj = new idx[nr + 1];
   md_malloc<size_type>(xadj, nr+1);
   //*adj = new idx[nE];
@@ -1240,18 +1237,20 @@ int read_mtx (
     }
   }
   (*xadj)[nr] = actual;
-  *ne = actual;
+  *numRows = nr;
+  *numCols = nc;
+  *numEntries = actual;
   return 0;
 }
 
 template <typename lno_t, typename size_type, typename scalar_t>
-void read_matrix(lno_t *nv, size_type *ne,size_type **xadj, lno_t **adj, scalar_t **ew, const char *filename){
+void read_matrix(lno_t *nv, lno_t *nc, size_type *ne,size_type **xadj, lno_t **adj, scalar_t **ew, const char *filename){
 
   std::string strfilename(filename);
   if (endswith(strfilename, ".mtx") || endswith(strfilename, ".mm")){
     read_mtx (
         filename,
-        nv, ne,
+        nv, nc, ne,
         xadj, adj, ew,false,false,false);
   }
 
@@ -1281,14 +1280,14 @@ crsMat_t read_kokkos_crst_matrix(const char * filename_){
   typedef typename cols_view_t::value_type   lno_t;
   typedef typename values_view_t::value_type scalar_t;
 
-
-  lno_t nv, *adj;
+  lno_t nr, nc;
+  lno_t *adj;
   size_type *xadj, nnzA;
   scalar_t *values;
   read_matrix<lno_t, size_type, scalar_t>(
-      &nv, &nnzA, &xadj, &adj, &values, filename_);
+      &nr, &nc, &nnzA, &xadj, &adj, &values, filename_);
 
-  row_map_view_t rowmap_view("rowmap_view", nv+1);
+  row_map_view_t rowmap_view("rowmap_view", nr+1);
   cols_view_t columns_view("colsmap_view", nnzA);
   values_view_t values_view("values_view", nnzA);
 
@@ -1298,7 +1297,7 @@ crsMat_t read_kokkos_crst_matrix(const char * filename_){
     typename cols_view_t::HostMirror hc = Kokkos::create_mirror_view (columns_view);
     typename values_view_t::HostMirror hv = Kokkos::create_mirror_view (values_view);
 
-    for (lno_t i = 0; i <= nv; ++i){
+    for (lno_t i = 0; i <= nr; ++i){
       hr(i) = xadj[i];
     }
 
@@ -1310,14 +1309,8 @@ crsMat_t read_kokkos_crst_matrix(const char * filename_){
     Kokkos::deep_copy (columns_view , hc);
     Kokkos::deep_copy (values_view , hv);
   }
-
-  lno_t ncols = 0;
-  KokkosKernels::Impl::kk_view_reduce_max
-      <cols_view_t, typename crsMat_t::execution_space>(nnzA, columns_view, ncols);
-  ncols += 1;
   
-  graph_t static_graph (columns_view, rowmap_view);
-  crsMat_t crsmat("CrsMatrix", ncols, values_view, static_graph);
+  crsMat_t crsmat("CrsMatrix", nr, nc, nnzA, values_view, rowmap_view, columns_view);
   delete [] xadj; delete [] adj; delete [] values;
   return crsmat;
 }

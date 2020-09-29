@@ -66,6 +66,7 @@ void print_options(){
   std::cerr << "\t[Required] --bmtx <path> :: 2nd input matrix" << std::endl;
   std::cerr << "\t[Optional] --cmtx <path> :: output matrix for C = A+B"  << std::endl;
   std::cerr << "\t[Optional] Verbose Output: '--verbose'" << std::endl;
+  std::cerr << "\t[Optional] Average over Trials: '--repeat N'" << std::endl;
 }
 
 
@@ -102,6 +103,11 @@ int parse_inputs (KokkosKernels::Experiment::Parameters &params, int argc, char 
       //has to have ".bin", or ".crs" extension.
       params.c_mtx_bin_file = argv[++i];
     }
+    else if ( 0 == strcasecmp( argv[i] , "--repeat" ) ) {
+      //if provided, C will be written to given file.
+      //has to have ".bin", or ".crs" extension.
+      params.repeat = atoi(argv[++i]);
+    }
     else if ( 0 == strcasecmp( argv[i] , "--verbose" ) ) {
       params.verbose = true;
     }
@@ -115,6 +121,8 @@ int parse_inputs (KokkosKernels::Experiment::Parameters &params, int argc, char 
 }
 
 int main (int argc, char ** argv){
+  using size_type = size_t;
+  using lno_t = int64_t;
 
   KokkosKernels::Experiment::Parameters params;
 
@@ -133,6 +141,8 @@ int main (int argc, char ** argv){
   Kokkos::initialize( Kokkos::InitArguments( num_threads, -1, device_id ) );
   Kokkos::print_configuration(std::cout);
 
+  cudaDeviceSetLimit(cudaLimitStackSize, 65536);
+
   bool useOMP = params.use_openmp != 0;
   bool useCUDA = params.use_cuda != 0;
   bool useSerial = !useOMP && !useCUDA;
@@ -140,7 +150,7 @@ int main (int argc, char ** argv){
   if(useOMP)
   {
 #if defined( KOKKOS_ENABLE_OPENMP )
-    using crsMat_t = KokkosSparse::CrsMatrix<double, int, Kokkos::OpenMP, void, size_t>;
+    using crsMat_t = KokkosSparse::CrsMatrix<double, lno_t, Kokkos::OpenMP, void, size_type>;
     KokkosKernels::Experiment::run_experiment<crsMat_t>(params);
 #else
     std::cout << "ERROR: OpenMP requested, but not available.\n";
@@ -150,7 +160,7 @@ int main (int argc, char ** argv){
   if(useCUDA)
   {
 #if defined( KOKKOS_ENABLE_CUDA )
-    using crsMat_t = KokkosSparse::CrsMatrix<double, int, Kokkos::Cuda, void, size_t>;
+    using crsMat_t = KokkosSparse::CrsMatrix<double, lno_t, Kokkos::Device<Kokkos::Cuda, Kokkos::CudaSpace>, void, size_type>;
     KokkosKernels::Experiment::run_experiment<crsMat_t>(params);
 #else
     std::cout << "ERROR: CUDA requested, but not available.\n";
@@ -160,7 +170,7 @@ int main (int argc, char ** argv){
   if(useSerial)
   {
 #if defined( KOKKOS_ENABLE_SERIAL )
-    using crsMat_t = KokkosSparse::CrsMatrix<double, int, Kokkos::Serial, void, size_t>;
+    using crsMat_t = KokkosSparse::CrsMatrix<double, lno_t, Kokkos::Serial, void, size_type>;
     KokkosKernels::Experiment::run_experiment<crsMat_t>(params);
 #else
     std::cout << "ERROR: Serial device requested, but not available.\n";
