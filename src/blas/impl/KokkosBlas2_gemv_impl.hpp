@@ -63,8 +63,6 @@ template<class AViewType,
 struct SingleLevelNontransposeGEMV {
   using AlphaCoeffType = typename AViewType::non_const_value_type;
   using BetaCoeffType  = typename YViewType::non_const_value_type;
-  using y_value_type = typename YViewType::non_const_value_type;
-  using AccumScalar = typename std::conditional<std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float, y_value_type>::type;
 
   SingleLevelNontransposeGEMV (const AlphaCoeffType& alpha,
                                const AViewType& A,
@@ -98,15 +96,17 @@ struct SingleLevelNontransposeGEMV {
   KOKKOS_INLINE_FUNCTION void
   operator () (const IndexType& i) const
   {
-    AccumScalar y_i;
+    using y_value_type = typename YViewType::non_const_value_type;
+
+    y_value_type y_i;
     if (betaPreset == 0) {
-      y_i = Kokkos::ArithTraits<AccumScalar>::zero ();
+      y_i = Kokkos::ArithTraits<y_value_type>::zero ();
     }
     else if (betaPreset == 1) {
-      y_i = AccumScalar(y_(i));
+      y_i = y_(i);
     }
     else { // beta_ != 0 and beta != 1
-      y_i = beta_ * AccumScalar(y_(i));
+      y_i = beta_ * y_(i);
     }
 
     const IndexType numCols = A_.extent(1);
@@ -115,12 +115,12 @@ struct SingleLevelNontransposeGEMV {
     }
     else if (alphaPreset == 1) {
       for (IndexType j = 0; j < numCols; ++j) {
-        y_i += AccumScalar(A_(i,j)) * x_(j);
+        y_i += A_(i,j) * x_(j);
       }
     }
     else { // alpha_ != 0 and alpha_ != 1
       for (IndexType j = 0; j < numCols; ++j) {
-        y_i += alpha_ * AccumScalar(A_(i,j)) * x_(j);
+        y_i += alpha_ * A_(i,j) * x_(j);
       }
     }
 
@@ -155,9 +155,8 @@ struct SingleLevelTransposeGEMV {
   using y_value_type   = typename YViewType::non_const_value_type;
   using AlphaCoeffType = typename AViewType::non_const_value_type;
   using BetaCoeffType  = typename YViewType::non_const_value_type;
-  using AccumScalar = typename std::conditional<std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float, y_value_type>::type;
 
-  typedef AccumScalar value_type[];
+  typedef y_value_type value_type[];
   IndexType value_count; // Kokkos needs this for reductions w/ array results
 
   SingleLevelTransposeGEMV (const AlphaCoeffType& alpha,
@@ -193,7 +192,7 @@ public:
   init (value_type y_cur) const
   {
     for (IndexType j = 0; j < value_count; ++j) {
-      y_cur[j] = Kokkos::ArithTraits<AccumScalar>::zero ();
+      y_cur[j] = Kokkos::Details::ArithTraits<y_value_type>::zero ();
     }
   }
 
@@ -209,12 +208,14 @@ public:
   KOKKOS_INLINE_FUNCTION void
   final (value_type y_result) const
   {
+    using Kokkos::Details::ArithTraits;
+
     for (IndexType j = 0; j < value_count; ++j) {
       // Sum into initial y_ values; use beta as a pre-multiplier if nonzero.
       if(betaPreset == 0)
-        y_(j) = y_value_type(alpha_ * y_result[j]);
+        y_(j) = y_result[j];
       else
-        y_(j) = y_value_type(beta_ * AccumScalar(y_(j)) + alpha_ * y_result[j]);
+        y_(j) = beta_ * y_(j) + y_result[j];
     }
   }
 
@@ -225,9 +226,17 @@ public:
     using KAT = ArithTraits<typename AViewType::non_const_value_type>;
 
     const auto x_i = x_(i);
-    for (IndexType j = 0; j < value_count; ++j) {
-      const auto A_ij = conj ? KAT::conj (A_(i,j)) : A_(i,j);
-      y_cur[j] += AccumScalar(A_ij) * x_i;
+    if (alphaPreset == 1) {
+      for (IndexType j = 0; j < value_count; ++j) {
+        const auto A_ij = conj ? KAT::conj (A_(i,j)) : A_(i,j);
+        y_cur[j] += A_ij * x_i;
+      }
+    }
+    else if (alphaPreset != 0) { // alpha_ != 0 and alpha_ != 1
+      for (IndexType j = 0; j < value_count; ++j) {
+        const auto A_ij = conj ? KAT::conj (A_(i,j)) : A_(i,j);
+        y_cur[j] += alpha_ * A_ij * x_i;
+      }
     }
   }
 
@@ -485,7 +494,7 @@ struct TwoLevelGEMV {
   using y_value_type   = typename YViewType::non_const_value_type;
   using AlphaCoeffType = typename AViewType::non_const_value_type;
   using BetaCoeffType  = typename YViewType::non_const_value_type;
-  using AccumScalar = typename std::conditional<std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float, y_value_type>::type;
+
 
   using execution_space = typename AViewType::execution_space;
   using policy_type = Kokkos::TeamPolicy<execution_space>;
@@ -522,14 +531,15 @@ public:
   KOKKOS_INLINE_FUNCTION void
   operator () (TwoLevelGEMV_LayoutLeftTag, const member_type& team) const
   {
-    using KAT = Kokkos::ArithTraits<y_value_type>;
-    using AKAT = Kokkos::ArithTraits<AccumScalar>;
+    using Kokkos::Details::ArithTraits;
+    using Scalar = typename YViewType::non_const_value_type;
+    using KAT = ArithTraits<Scalar>;
     //Allocate a Scalar in shared for each thread
-    AccumScalar* blockResult = (AccumScalar*) team.team_shmem().get_shmem(32 * sizeof(AccumScalar));
+    Scalar* blockResult = (Scalar*) team.team_shmem().get_shmem(32 * sizeof(Scalar));
     Kokkos::parallel_for(Kokkos::TeamThreadRange(team, 32),
     [&](int i)
     {
-      blockResult[i] = AKAT::zero();
+      blockResult[i] = KAT::zero();
     });
     team.team_barrier();
     //Which block this thread will work on
@@ -537,14 +547,14 @@ public:
     //Which row in the block this thread will work on
     IndexType row = team.league_rank() * 32 + team.team_rank() % 32;
     IndexType blockColStart = columnsPerThread * block;
-    AccumScalar localSum = AKAT::zero();
+    Scalar localSum = KAT::zero();
     //compute local sum
     if(row < (IndexType) A_.extent(0))
     {
       for(IndexType col = blockColStart; col < blockColStart + columnsPerThread && col < A_.extent(1); col++)
       {
         //A access is coalesced, x access is a broadcast
-        localSum += AccumScalar(A_(row, col)) * AccumScalar(x_(col));
+        localSum += A_(row, col) * x_(col);
       }
     }
     //atomically combine local result into shared
@@ -557,9 +567,9 @@ public:
       if(yrow < (IndexType) A_.extent(0))
       {
         if(beta_ == KAT::zero())
-          y_(yrow) = y_value_type(alpha_ * blockResult[i]);
+          y_(yrow) = alpha_ * blockResult[i];
         else
-          y_(yrow) = y_value_type(beta_ * AccumScalar(y_(yrow)) + alpha_ * blockResult[i]);
+          y_(yrow) = beta_ * y_(yrow) + alpha_ * blockResult[i];
       }
     });
   }
@@ -568,15 +578,16 @@ public:
   KOKKOS_INLINE_FUNCTION void
   operator () (TwoLevelGEMV_LayoutRightTag, const member_type& team) const
   {
-    using KAT = Kokkos::ArithTraits<y_value_type>;
+    using Kokkos::Details::ArithTraits;
+    using KAT = ArithTraits<typename YViewType::non_const_value_type>;
 
     const IndexType N = A_.extent(1);
     const int i = team.league_rank(); // batch id
 
     // parallel-reduce to compute val += A(:,j)' * x
-    AccumScalar val;
-    Kokkos::parallel_reduce( Kokkos::TeamThreadRange( team, N ), [&] ( const int j, AccumScalar& update ) {
-      update += AccumScalar(A_(i, j)) * x_(j);
+    y_value_type val = KAT::zero();
+    Kokkos::parallel_reduce( Kokkos::TeamThreadRange( team, N ), [&] ( const int j, y_value_type &update ) {
+      update += A_(i, j) * x_(j);
     }, val);
 
     // compute yj = beta*yj + alpha*val
@@ -584,9 +595,9 @@ public:
     [&]()
     {
       if(beta_ == KAT::zero())
-        y_(i) = y_value_type(alpha_ * val);
+        y_(i) = alpha_ * val;
       else
-        y_(i) = y_value_type(beta_ * AccumScalar(y_(i)) + alpha_ * val);
+        y_(i) = beta_ * y_(i) + alpha_ * val;
     });
   }
 
@@ -614,7 +625,7 @@ struct TwoLevelTransposeGEMV {
   using y_value_type   = typename YViewType::non_const_value_type;
   using AlphaCoeffType = typename AViewType::non_const_value_type;
   using BetaCoeffType  = typename YViewType::non_const_value_type;
-  using AccumScalar = typename std::conditional<std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float, y_value_type>::type;
+
 
   using execution_space = typename AViewType::execution_space;
   using policy_type = Kokkos::TeamPolicy<execution_space>;
@@ -655,11 +666,11 @@ public:
     const int j = team.league_rank(); // batch id
 
     // parallel-reduce to compute val += A(:,j)' * x
-    AccumScalar val;
-    Kokkos::parallel_reduce( Kokkos::TeamThreadRange( team, M ), [&] ( const int i, AccumScalar& update ) {
+    y_value_type val = KAT_Y::zero();
+    Kokkos::parallel_reduce( Kokkos::TeamThreadRange( team, M ), [&] ( const int i, y_value_type &update ) {
       const auto x_i = x_(i);
       const auto A_ij = conj ? KAT_A::conj (A_(i,j)) : A_(i,j);
-      update += AccumScalar(A_ij) * x_i;
+      update += A_ij * x_i;
     }, val);
 
     // compute yj = beta*yj + alpha*val
@@ -667,9 +678,9 @@ public:
     [&]()
     {
       if(beta_ == KAT_Y::zero())
-        y_(j) = y_value_type(alpha_ * val);
+        y_(j) = alpha_ * val;
       else
-        y_(j) = y_value_type(beta_ * AccumScalar(y_(j)) + alpha_ * val);
+        y_(j) = beta_ * y_(j) + alpha_ * val;
     });
   }
 
@@ -757,8 +768,7 @@ twoLevelGemv (const char trans[],
     tagged_policy team;
     if(isLayoutLeft)
     {
-      using AccumScalar = typename std::conditional<std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float, y_value_type>::type;
-      size_t sharedPerTeam = 32 * sizeof(AccumScalar);
+      size_t sharedPerTeam = 32 * sizeof(y_value_type);
       IndexType numTeams = (A.extent(0) + 31) / 32;
       tagged_policy temp(1, 1);
       int teamSize = temp.team_size_max(functor, Kokkos::ParallelForTag());
