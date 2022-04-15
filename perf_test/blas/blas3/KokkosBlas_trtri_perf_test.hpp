@@ -289,6 +289,9 @@ void __do_trtri_serial_batched(options_t options, trtri_args_t trtri_args) {
 
   char __uplo = tolower(trtri_args.uplo), __diag = tolower(trtri_args.diag);
 
+  using KokkosBatched::Diag;
+  using KokkosBatched::Uplo;
+
   STATUS;
 
   //// Lower ////
@@ -432,6 +435,8 @@ void __do_trtri_parallel_batched(options_t options, trtri_args_t trtri_args) {
   using KokkosBatched::Uplo;
 
   char __uplo = tolower(trtri_args.uplo), __diag = tolower(trtri_args.diag);
+  using KokkosBatched::Diag;
+  using KokkosBatched::Uplo;
 
   STATUS;
 

@@ -81,23 +81,28 @@ class Controls {
 
   // check if a parameter is already set
   bool isParameter(const std::string& name) const {
-    return kernel_parameters.end() != kernel_parameters.find(name);
+    bool return_value = false;
+
+    auto search = kernel_parameters.find(name);
+    if (search != kernel_parameters.end()) {
+      return_value = true;
+    }
+
+    return return_value;
   }
 
-  /// \brief get the value associated with \c name, or \c default if not present
-  ///
-  /// \param name the name of the parameter to retrieve
-  /// \param orUnset (default \c "" ) the value to return if \c name is not set
-  std::string getParameter(const std::string& name,
-                           const std::string& orUnset = "") const {
+  // retrieve the value associated with a parameter if it is already set
+  std::string getParameter(const std::string& name) const {
     auto search = kernel_parameters.find(name);
-    if (kernel_parameters.end() == search) {
+    std::string value;
+    if (search == kernel_parameters.end()) {
       std::cout << "Parameter " << name
                 << " was not found in the list of parameters!" << std::endl;
-      return orUnset;
+      value = "";
     } else {
-      return search->second;
+      value = search->second;
     }
+    return value;
   }
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS

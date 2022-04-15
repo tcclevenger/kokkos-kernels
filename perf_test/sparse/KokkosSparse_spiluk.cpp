@@ -257,10 +257,6 @@ int test_spiluk_perf(std::vector<int> tests, std::string afilename, int kin,
                 << std::endl;
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
-      // cuSPARSE requires lno_t = size_type = int. For both, int is always used
-      // (if enabled)
-#if defined(KOKKOSKERNELS_INST_ORDINAL_INT) && \
-    defined(KOKKOSKERNELS_INST_OFFSET_INT)
       if (fill_lev == 0) {
         std::cout << "CUSPARSE: No KK interface added yet" << std::endl;
 
@@ -417,7 +413,6 @@ int test_spiluk_perf(std::vector<int> tests, std::string afilename, int kin,
         std::cout << "ILU(0) SUCCESS!" << std::endl;
       }  // fill_lev=0
 #endif
-#endif
 
       // Benchmark
       Kokkos::fence();
@@ -441,10 +436,6 @@ int test_spiluk_perf(std::vector<int> tests, std::string afilename, int kin,
       std::cout << "LOOP_MIN_TIME:  " << min_time << std::endl;
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
-      // cuSPARSE requires lno_t = size_type = int. For both, int is always used
-      // (if enabled)
-#if defined(KOKKOSKERNELS_INST_ORDINAL_INT) && \
-    defined(KOKKOSKERNELS_INST_OFFSET_INT)
       if (fill_lev == 0) {
         lno_view_t A_row_map("A_row_map", nrows + 1);
         lno_nnz_view_t A_entries("A_entries", nnz);
@@ -475,20 +466,14 @@ int test_spiluk_perf(std::vector<int> tests, std::string afilename, int kin,
         std::cout << "LOOP_MIN_TIME (cuSPARSE):  " << min_time << std::endl;
       }  // fill_lev=0
 #endif
-#endif
     }  // end tests
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
-    // cuSPARSE requires lno_t = size_type = int. For both, int is always used
-    // (if enabled)
-#if defined(KOKKOSKERNELS_INST_ORDINAL_INT) && \
-    defined(KOKKOSKERNELS_INST_OFFSET_INT)
     // step 6: free resources
     cudaFree(pBuffer);
     cusparseDestroyCsrilu02Info(info);
     cusparseDestroyMatDescr(descr);
     cusparseDestroy(handle);
-#endif
 #endif
   }  // end if (!afilename.empty())
 

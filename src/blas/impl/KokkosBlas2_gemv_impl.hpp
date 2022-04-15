@@ -64,9 +64,8 @@ struct SingleLevelNontransposeGEMV {
   using BetaCoeffType  = typename YViewType::non_const_value_type;
   using y_value_type   = typename YViewType::non_const_value_type;
   using AccumScalar    = typename std::conditional<
-      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value ||
-          std::is_same<y_value_type, Kokkos::Experimental::bhalf_t>::value,
-      float, y_value_type>::type;
+      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float,
+      y_value_type>::type;
 
   SingleLevelNontransposeGEMV(const AlphaCoeffType& alpha, const AViewType& A,
                               const XViewType& x, const BetaCoeffType& beta,
@@ -147,9 +146,8 @@ struct SingleLevelTransposeGEMV {
   using AlphaCoeffType = typename AViewType::non_const_value_type;
   using BetaCoeffType  = typename YViewType::non_const_value_type;
   using AccumScalar    = typename std::conditional<
-      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value ||
-          std::is_same<y_value_type, Kokkos::Experimental::bhalf_t>::value,
-      float, y_value_type>::type;
+      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float,
+      y_value_type>::type;
 
   typedef AccumScalar value_type[];
   IndexType value_count;  // Kokkos needs this for reductions w/ array results
@@ -481,9 +479,8 @@ struct TwoLevelGEMV {
   using AlphaCoeffType = typename AViewType::non_const_value_type;
   using BetaCoeffType  = typename YViewType::non_const_value_type;
   using AccumScalar    = typename std::conditional<
-      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value ||
-          std::is_same<y_value_type, Kokkos::Experimental::bhalf_t>::value,
-      float, y_value_type>::type;
+      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float,
+      y_value_type>::type;
 
   using execution_space = typename AViewType::execution_space;
   using policy_type     = Kokkos::TeamPolicy<execution_space>;
@@ -603,9 +600,8 @@ struct TwoLevelTransposeGEMV {
   using AlphaCoeffType = typename AViewType::non_const_value_type;
   using BetaCoeffType  = typename YViewType::non_const_value_type;
   using AccumScalar    = typename std::conditional<
-      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value ||
-          std::is_same<y_value_type, Kokkos::Experimental::bhalf_t>::value,
-      float, y_value_type>::type;
+      std::is_same<y_value_type, Kokkos::Experimental::half_t>::value, float,
+      y_value_type>::type;
 
   using execution_space = typename AViewType::execution_space;
   using policy_type     = Kokkos::TeamPolicy<execution_space>;
@@ -743,8 +739,7 @@ void twoLevelGemv(const typename AViewType::execution_space& space,
     tagged_policy team;
     if (isLayoutLeft) {
       using AccumScalar = typename std::conditional<
-          std::is_same<y_value_type, Kokkos::Experimental::half_t>::value ||
-              std::is_same<y_value_type, Kokkos::Experimental::bhalf_t>::value,
+          std::is_same<y_value_type, Kokkos::Experimental::half_t>::value,
           float, y_value_type>::type;
       size_t sharedPerTeam = 32 * sizeof(AccumScalar);
       IndexType numTeams   = (A.extent(0) + 31) / 32;

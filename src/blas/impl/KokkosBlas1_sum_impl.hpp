@@ -162,8 +162,7 @@ void MV_Sum_Invoke(
   }
   // Zero out the result vector
   Kokkos::deep_copy(
-      execution_space(), r,
-      Kokkos::ArithTraits<typename RV::non_const_value_type>::zero());
+      r, Kokkos::ArithTraits<typename RV::non_const_value_type>::zero());
   size_type teamsPerVec;
   KokkosBlas::Impl::multipleReductionWorkDistribution<execution_space,
                                                       size_type>(
@@ -188,7 +187,7 @@ void MV_Sum_Invoke(
           Kokkos::view_alloc(Kokkos::WithoutInitializing, "Sum temp result"),
           r.extent(0));
   MV_Sum_Invoke<decltype(tempResult), XV, size_type>(tempResult, x);
-  Kokkos::deep_copy(typename XV::execution_space(), r, tempResult);
+  Kokkos::deep_copy(r, tempResult);
 }
 
 }  // namespace Impl
